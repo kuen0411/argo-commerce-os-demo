@@ -150,3 +150,16 @@ test('assignment scope and closed case documents preserve their history',()=>{
   m.adminEdit(s,'admin','entity','e2','name','ARGO 管理公司','登記名稱');
   assert.equal(s.settings.companyName,'ARGO 管理公司');
 });
+
+test('sales manages only assigned owners and only operations can reassign them',()=>{
+  const s=fresh();
+  assert.equal(m.visiblePeople(s,'sales').filter(x=>x.kind==='owner').length,3);
+  assert.throws(()=>m.assignSales(s,'sales','p1','sales','自行指派'),/僅管理方/);
+  m.assignSales(s,'ops','p2',null,'暫時未指派');
+  assert.equal(m.person(s,'p2').salesId,null);
+  assert.ok(!m.visiblePeople(s,'sales').some(x=>x.id==='p2'));
+  assert.ok(!m.visibleStores(s,'sales').some(x=>m.account(s,x.accountId)?.ownerId==='p2'));
+  m.createPlatformAccount(s,'sales',{ownerId:'p1',platform:'Shopee',code:'SHP-WANG-009',status:'正常',note:''});
+  assert.throws(()=>m.createPlatformAccount(s,'sales',{ownerId:'p2',platform:'Shopee',code:'SHP-LIN-009',status:'正常',note:''}),/不能管理這位號主/);
+  assert.equal(m.visibleSettlements(s,'sales').length,0);
+});

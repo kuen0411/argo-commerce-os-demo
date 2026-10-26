@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {SEED,ROLE_KEY,STORAGE_KEY,TOUR_KEY} from '../dist/model.mjs';
 
 const pages=['index','people','accounts','stores','cases','tasks','docs','finance','operations','history','settings','admin'];
-const roles=['admin','ops','marketing','finance','owner1','merchant'];
+const roles=['admin','ops','marketing','finance','sales','owner1','merchant'];
 
 function loadUI(role,page,id='',fixture=SEED,tourSeen=true){
   const values=new Map([[ROLE_KEY,role],[STORAGE_KEY,JSON.stringify(fixture)]]);
@@ -15,14 +15,31 @@ function loadUI(role,page,id='',fixture=SEED,tourSeen=true){
   return import('../dist/app.mjs?ui='+role+'-'+page+'-'+id+'-'+Math.random()).then(()=>roots);
 }
 
-test('all twelve pages render for six identities with scoped navigation',async()=>{
+test('all twelve pages render for seven identities with scoped navigation',async()=>{
   for(const role of roles)for(const page of pages){
     const ui=await loadUI(role,page);
     assert.match(ui.app.innerHTML,/ARGO Commerce OS/,role+' '+page);
     if(role!=='admin'&&['settings','admin'].includes(page))assert.match(ui.app.innerHTML,/無權開啟/,role+' '+page);
     if(role==='admin'&&page==='admin')assert.match(ui.app.innerHTML,/DATA CONTROL/,role+' '+page);
     if(role==='marketing'&&['people','accounts','finance'].includes(page))assert.match(ui.app.innerHTML,/無權開啟/,role+' '+page);
+    if(role==='sales'&&page==='finance')assert.match(ui.app.innerHTML,/無權開啟/,role+' '+page);
   }
+});
+
+test('sales sees and manages only the owners assigned to them',async()=>{
+  const fixture=structuredClone(SEED);
+  fixture.people.find(x=>x.id==='p2').salesId=null;
+  const list=await loadUI('sales','people','',fixture);
+  assert.match(list.app.innerHTML,/王大明/);
+  assert.doesNotMatch(list.app.innerHTML,/林怡君/);
+  const hidden=await loadUI('sales','people','p2',fixture);
+  assert.match(hidden.app.innerHTML,/無權開啟/);
+  const owned=await loadUI('sales','people','p1');
+  assert.match(owned.app.innerHTML,/新增平台帳號/);
+  assert.match(owned.app.innerHTML,/負責業務/);
+  assert.doesNotMatch(owned.app.innerHTML,/指派業務/);
+  const ops=await loadUI('ops','people','p1');
+  assert.match(ops.app.innerHTML,/指派業務/);
 });
 
 test('merchant links and private document routes observe visibility rules',async()=>{

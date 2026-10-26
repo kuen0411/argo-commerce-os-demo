@@ -2,6 +2,7 @@ export const ACTORS = {
   ops: {id:'ops',name:'陳予安',title:'管理方・營運',initial:'陳',kind:'ops'},
   finance: {id:'finance',name:'李思穎',title:'管理方・會計',initial:'李',kind:'finance'},
   marketing: {id:'marketing',name:'周怡潔',title:'管理方・行銷',initial:'周',kind:'marketing'},
+  sales: {id:'sales',name:'業務人員',title:'管理方・業務',initial:'業',kind:'sales'},
   owner1: {id:'owner1',name:'王大明',title:'號主・帳號持有人',initial:'王',kind:'owner',personId:'p1'},
   owner2: {id:'owner2',name:'林怡君',title:'號主・帳號持有人',initial:'林',kind:'owner',personId:'p2'},
   merchant: {id:'merchant',name:'店主 B',title:'店主・實際經營者',initial:'B',kind:'merchant',personId:'mB'},
@@ -28,9 +29,9 @@ export const TOUR_KEY='argo-commerce-os-tour-v3';
 export const SEED={
   version:2,
   people:[
-    {id:'p1',kind:'owner',name:'王大明',phone:'0912-***-456',city:'台北市',email:'wang@example.test',status:'合作中',notes:'合作 2 年，平台驗證待補件。',sensitive:{family:'已授權資料',occupation:'自由工作者',income:'限專責人員',health:'限專責人員'}},
-    {id:'p2',kind:'owner',name:'林怡君',phone:'0922-***-731',city:'新北市',email:'lin@example.test',status:'合作中',notes:'酷澎帳號，近期評估退出合作。',sensitive:{family:'未提供',occupation:'商業顧問',income:'限專責人員',health:'限專責人員'}},
-    {id:'p3',kind:'owner',name:'許雅婷',phone:'0933-***-842',city:'桃園市',email:'hsu@example.test',status:'合作中',notes:'兩平台合作，待完成身分文件。',sensitive:{family:'未提供',occupation:'設計師',income:'未提供',health:'未提供'}},
+    {id:'p1',kind:'owner',salesId:'sales',name:'王大明',phone:'0912-***-456',city:'台北市',email:'wang@example.test',status:'合作中',notes:'合作 2 年，平台驗證待補件。',sensitive:{family:'已授權資料',occupation:'自由工作者',income:'限專責人員',health:'限專責人員'}},
+    {id:'p2',kind:'owner',salesId:'sales',name:'林怡君',phone:'0922-***-731',city:'新北市',email:'lin@example.test',status:'合作中',notes:'酷澎帳號，近期評估退出合作。',sensitive:{family:'未提供',occupation:'商業顧問',income:'限專責人員',health:'限專責人員'}},
+    {id:'p3',kind:'owner',salesId:'sales',name:'許雅婷',phone:'0933-***-842',city:'桃園市',email:'hsu@example.test',status:'合作中',notes:'兩平台合作，待完成身分文件。',sensitive:{family:'未提供',occupation:'設計師',income:'未提供',health:'未提供'}},
     {id:'mA',kind:'merchant',name:'店主 A',phone:'—',city:'深圳',email:'merchant-a@example.test',status:'歷任店主',notes:'一號店歷任經營者。'},
     {id:'mB',kind:'merchant',name:'店主 B',phone:'—',city:'廣州',email:'merchant-b@example.test',status:'合作中',notes:'拾光選物現任經營者。'},
     {id:'mC',kind:'merchant',name:'店主 C',phone:'—',city:'杭州',email:'merchant-c@example.test',status:'合作中',notes:'森活日常現任經營者。'},
@@ -110,7 +111,7 @@ export const SEED={
 
 export function clone(x){return JSON.parse(JSON.stringify(x))}
 function hydrateActors(s){for(const key of Object.keys(ACTORS))delete ACTORS[key];for(const u of s.users||[])if(u.status==='啟用'&&!u.deletedAt)ACTORS[u.id]={id:u.id,name:u.name,title:u.title,initial:u.initial,kind:u.kind,personId:u.personId}}
-export function loadState(){try{const parsed=JSON.parse(localStorage.getItem(STORAGE_KEY));if(parsed?.version===2){parsed.settings=parsed.settings||clone(SEED.settings);parsed.settings.deletionVerifier??=null;parsed.expenseRequests??=[];parsed.users??=clone(SEED.users);for(const u of SEED.users)if(!parsed.users.some(x=>x.id===u.id))parsed.users.push(clone(u));for(const u of parsed.users)u.passwordHash??=null;hydrateActors(parsed);return parsed}const old=JSON.parse(localStorage.getItem('argo-commerce-os-demo-v1'));if(old?.version===1){const next=clone(old);next.version=2;for(const key of ['people','entities','accounts','stores'])for(const x of SEED[key])if(!next[key].some(y=>y.id===x.id))next[key].push(clone(x));next.users=clone(SEED.users);next.settings=clone(SEED.settings);next.expenseRequests=[];hydrateActors(next);return next}}catch{}const result=clone(SEED);hydrateActors(result);return result}
+export function loadState(){try{const parsed=JSON.parse(localStorage.getItem(STORAGE_KEY));if(parsed?.version===2){parsed.settings=parsed.settings||clone(SEED.settings);parsed.settings.deletionVerifier??=null;parsed.expenseRequests??=[];for(const p of parsed.people)if(p.kind==='owner'&&p.salesId===undefined)p.salesId=SEED.people.find(x=>x.id===p.id)?.salesId??null;parsed.users??=clone(SEED.users);for(const u of SEED.users)if(!parsed.users.some(x=>x.id===u.id))parsed.users.push(clone(u));for(const u of parsed.users)u.passwordHash??=null;hydrateActors(parsed);return parsed}const old=JSON.parse(localStorage.getItem('argo-commerce-os-demo-v1'));if(old?.version===1){const next=clone(old);next.version=2;for(const key of ['people','entities','accounts','stores'])for(const x of SEED[key])if(!next[key].some(y=>y.id===x.id))next[key].push(clone(x));next.users=clone(SEED.users);next.settings=clone(SEED.settings);next.expenseRequests=[];hydrateActors(next);return next}}catch{}const result=clone(SEED);hydrateActors(result);return result}
 export function saveState(state){localStorage.setItem(STORAGE_KEY,JSON.stringify(state));hydrateActors(state)}
 export const person=(s,id)=>s.people.find(x=>x.id===id);
 export const account=(s,id)=>s.accounts.find(x=>x.id===id);
@@ -135,6 +136,7 @@ export function visibleStores(s,role){
   const a=roleOf(role);
   if(['ops','admin','finance','marketing'].includes(a.kind))return s.stores.filter(x=>!x.deletedAt);
   if(a.kind==='owner')return s.stores.filter(x=>!x.deletedAt&&account(s,x.accountId)?.ownerId===a.personId);
+  if(a.kind==='sales')return s.stores.filter(x=>!x.deletedAt&&s.people.some(p=>p.id===account(s,x.accountId)?.ownerId&&p.salesId===a.id));
   if(a.kind==='merchant')return s.stores.filter(x=>!x.deletedAt&&x.assignments.some(v=>v.merchantId===a.personId));
   return [];
 }
@@ -162,7 +164,7 @@ export function visibleTasks(s,role){
 export function canManageTask(s,role,id){const t=s.tasks.find(x=>x.id===id&&!x.deletedAt);return !!t&&visibleTasks(s,role).some(x=>x.id===id)&&(roleIs(role,'admin','ops')||t.assignee===role||t.createdBy===role)}
 export function visibleSettlements(s,role){
   const ids=new Set(visibleStores(s,role).map(x=>x.id));
-  return s.settlements.filter(x=>!x.deletedAt&&ids.has(x.storeId)&&roleOf(role).kind!=='marketing'&&(roleOf(role).kind!=='merchant'||x.operatorId===roleOf(role).personId));
+  return s.settlements.filter(x=>!x.deletedAt&&ids.has(x.storeId)&&!['marketing','sales'].includes(roleOf(role).kind)&&(roleOf(role).kind!=='merchant'||x.operatorId===roleOf(role).personId));
 }
 export function visibleDocuments(s,role){
   const ids=new Set(visibleStores(s,role).map(x=>x.id));
@@ -184,6 +186,7 @@ export function visiblePeople(s,role){
   const a=roleOf(role);
   if(a.kind==='admin'||a.kind==='ops')return s.people.filter(x=>!x.deletedAt);
   if(a.kind==='owner')return s.people.filter(x=>!x.deletedAt&&x.id===a.personId);
+  if(a.kind==='sales')return s.people.filter(x=>!x.deletedAt&&x.kind==='owner'&&x.salesId===a.id);
   if(a.kind==='finance')return s.people.filter(x=>!x.deletedAt&&x.kind==='owner'&&visibleStores(s,role).some(st=>ownerOf(s,st)?.id===x.id));
   return [];
 }
@@ -413,6 +416,7 @@ export function markNotification(s,role,id){
   const n=s.notifications.find(x=>x.id===id);ensure(n&&n.recipient===role,'無權讀取此通知。');n.read=true;return n;
 }
 function manager(role){ensure(roleIs(role,'ops','admin'),'僅管理方可設定合作資料。')}
+function ownerScope(s,role,ownerId){ensure(roleIs(role,'ops','admin')||roleIs(role,'sales')&&person(s,ownerId)?.salesId===roleOf(role).id,'此身分不能管理這位號主。')}
 function uniqueCode(list,code,except){ensure(!list.some(x=>x.code?.toLowerCase()===code.toLowerCase()&&x.id!==except),'此編號已存在，請使用不同編號。')}
 export function createPerson(s,role,x){
   manager(role);ensure(['owner','merchant'].includes(x.kind),'請選擇合作類型。');ensure(x.name?.trim(),'請輸入合作對象姓名。');
@@ -420,13 +424,13 @@ export function createPerson(s,role,x){
   s.people.unshift(p);audit(s,role,'新增合作對象','person',p.id,'無',p.name,x.kind);record(s,role,'新增合作對象',p.name+'・'+x.kind,'person',p.id);return p;
 }
 export function createPlatformAccount(s,role,x){
-  manager(role);const owner=person(s,x.ownerId);ensure(owner?.kind==='owner'&&owner.status!=='資料保留中','請選擇有效號主。');
+  ownerScope(s,role,x.ownerId);const owner=person(s,x.ownerId);ensure(owner?.kind==='owner'&&owner.status!=='資料保留中','請選擇有效號主。');
   ensure(s.settings.platforms.includes(x.platform),'請選擇已設定的平台。');ensure(x.code?.trim(),'請填寫平台帳號識別碼。');uniqueCode(s.accounts,x.code.trim());
   const a={id:uid('a'),code:x.code.trim(),platform:x.platform,ownerId:owner.id,status:x.status||'正常',storeIds:[],note:x.note?.trim()||'',history:[{time:stamp(),actor:role,action:'建立',detail:'號主 '+owner.name+'・'+x.platform}]};
   s.accounts.unshift(a);audit(s,role,'建立平台帳號','account',a.id,'無',a.code,'號主 '+owner.name);record(s,role,'建立平台帳號',a.code,'account',a.id);return a;
 }
 export function updatePlatformAccount(s,role,id,patch,reason){
-  manager(role);const a=account(s,id);ensure(a,'找不到平台帳號。');ensure(reason?.trim(),'修改原因必填。');
+  const a=account(s,id);ensure(a,'找不到平台帳號。');ownerScope(s,role,a.ownerId);ensure(reason?.trim(),'修改原因必填。');
   const before=JSON.stringify({code:a.code,status:a.status,note:a.note});
   if(patch.code?.trim()){uniqueCode(s.accounts,patch.code.trim(),id);a.code=patch.code.trim()}
   if(patch.status)ensure(['正常','驗證中','授權將到期','暫停','已歸還'].includes(patch.status),'無效帳號狀態。');
@@ -449,22 +453,28 @@ export function updateStore(s,role,id,patch,reason){
   audit(s,role,'修改 Store','store',id,before,JSON.stringify({name:st.name,category:st.category,note:st.note}),reason);record(s,role,'店舖資料修改',reason,'store',id,id);return st;
 }
 export function createOwnerBusiness(s,role,x){
-  manager(role);const owner=person(s,x.ownerId);ensure(owner?.kind==='owner'&&x.name?.trim(),'請選擇號主並填寫公司或商號名稱。');
+  ownerScope(s,role,x.ownerId);const owner=person(s,x.ownerId);ensure(owner?.kind==='owner'&&x.name?.trim(),'請選擇號主並填寫公司或商號名稱。');
   const e={id:uid('e'),name:x.name.trim(),kind:'owner_business',ownerId:owner.id,taxId:x.taxId?.trim()||'未提供',storeIds:[],status:'營運中'};
   s.entities.unshift(e);audit(s,role,'建立號主商號','entity',e.id,'無',e.name,'號主 '+owner.name);return e;
 }
+export function assignSales(s,role,ownerId,salesId,reason){
+  manager(role);const owner=person(s,ownerId);ensure(owner?.kind==='owner','請選擇號主。');
+  ensure(!salesId||ACTORS[salesId]?.kind==='sales','請選擇業務。');ensure(reason?.trim(),'請填寫指派原因。');
+  const before=owner.salesId||'未指派';owner.salesId=salesId||null;
+  audit(s,role,'指派負責業務','person',ownerId,before,owner.salesId||'未指派',reason);record(s,role,'負責業務變更',owner.name+'・'+reason,'person',ownerId);return owner;
+}
 export function addPersonDocument(s,role,ownerId,x){
-  const p=person(s,ownerId);ensure(p?.kind==='owner'&&(roleIs(role,'ops','admin')||roleOf(role).kind==='owner'&&roleOf(role).personId===ownerId),'無權上傳此號主文件。');
+  const p=person(s,ownerId);ensure(p?.kind==='owner'&&(roleIs(role,'ops','admin')||roleOf(role).kind==='owner'&&roleOf(role).personId===ownerId||roleIs(role,'sales')&&p.salesId===roleOf(role).id),'無權上傳此號主文件。');
   ensure(['身分證','銀行存摺','授權書','其他個人文件'].includes(x.type),'請選擇個人文件類型。');ensure(x.name?.trim(),'請填文件名稱。');
   const d={id:uid('d'),name:x.name.trim(),type:x.type,version:1,uploadedBy:role,uploadedAt:stamp(),source:x.source||'展示上傳',refs:[{kind:'person',id:ownerId}],privacy:'owner_private',operational:false};
   if(x.dataUrl)d.dataUrl=x.dataUrl;s.documents.unshift(d);audit(s,role,'上傳號主文件','document',d.id,'無',d.name,'僅號主與授權管理方可見');record(s,role,'號主文件上傳',d.type+'・'+d.name,'document',d.id);return d;
 }
 export function createLogin(s,role,x){
   ensure(roleIs(role,'admin'),'僅系統管理員可設定登入帳號。');ensure(x.login?.trim()&&x.name?.trim(),'請填登入代號與顯示名稱。');
-  ensure(['admin','ops','marketing','finance','owner','merchant'].includes(x.kind),'無效角色。');ensure(!s.users.some(u=>u.login.toLowerCase()===x.login.trim().toLowerCase()),'登入代號已存在。');
+  ensure(['admin','ops','marketing','finance','sales','owner','merchant'].includes(x.kind),'無效角色。');ensure(!s.users.some(u=>u.login.toLowerCase()===x.login.trim().toLowerCase()),'登入代號已存在。');
   const p=x.personId?person(s,x.personId):null;ensure(!['owner','merchant'].includes(x.kind)||p?.kind===x.kind,'號主或店主登入必須綁定相同類型的合作對象。');
   ensure(!p||!p.deletedAt&&p.status!=='已取消合作'&&p.status!=='資料保留中','已結束合作的對象不可建立登入。');
-  const u={id:uid('u'),login:x.login.trim(),name:x.name.trim(),title:({admin:'系統管理員',ops:'管理方・營運',marketing:'管理方・行銷',finance:'管理方・會計',owner:'號主・帳號持有人',merchant:'店主・實際經營者'})[x.kind],initial:x.name.trim()[0],kind:x.kind,personId:p?.id,status:'啟用',passwordHash:x.passwordHash||null};
+  const u={id:uid('u'),login:x.login.trim(),name:x.name.trim(),title:({admin:'系統管理員',ops:'管理方・營運',marketing:'管理方・行銷',sales:'管理方・業務',finance:'管理方・會計',owner:'號主・帳號持有人',merchant:'店主・實際經營者'})[x.kind],initial:x.name.trim()[0],kind:x.kind,personId:p?.id,status:'啟用',passwordHash:x.passwordHash||null};
   s.users.unshift(u);hydrateActors(s);audit(s,role,'新增展示登入','user',u.id,'無',u.login,u.kind);return u;
 }
 export function setLoginStatus(s,role,id,status,reason){
@@ -477,12 +487,12 @@ export function setLoginStatus(s,role,id,status,reason){
 export function addPlatform(s,role,name){ensure(roleIs(role,'admin'),'僅系統管理員可設定平台。');ensure(name?.trim(),'請填平台名稱。');ensure(!s.settings.platforms.some(x=>x.toLowerCase()===name.trim().toLowerCase()),'平台已存在。');s.settings.platforms.push(name.trim());audit(s,role,'新增平台選項','settings','platforms','無',name,'展示設定');return name.trim()}
 export function updateLogin(s,role,id,x,reason){
   ensure(roleIs(role,'admin'),'僅系統管理員可修改登入帳號。');const u=s.users.find(y=>y.id===id&&!y.deletedAt);ensure(u&&reason?.trim(),'找不到帳號或缺少原因。');
-  ensure(['admin','ops','marketing','finance','owner','merchant'].includes(x.kind),'角色無效。');const p=x.personId?person(s,x.personId):null;
+  ensure(['admin','ops','marketing','finance','sales','owner','merchant'].includes(x.kind),'角色無效。');const p=x.personId?person(s,x.personId):null;
   ensure(id!==role||x.kind==='admin','請先切換另一位管理員，再修改目前帳號的管理權限。');
   ensure(!['owner','merchant'].includes(x.kind)||p?.kind===x.kind,'號主或店主帳號須綁定同類合作對象。');
   ensure(!p||!p.deletedAt&&p.status!=='已取消合作'&&p.status!=='資料保留中','已結束合作的對象不可綁定登入。');
   if(u.kind==='admin'&&x.kind!=='admin')ensure(s.users.filter(y=>y.kind==='admin'&&y.status==='啟用'&&!y.deletedAt).length>1,'不可移除最後一位管理員。');
-  const before=JSON.stringify({name:u.name,kind:u.kind,personId:u.personId});u.name=x.name?.trim()||u.name;u.kind=x.kind;u.title=({admin:'系統管理員',ops:'管理方・營運',marketing:'管理方・行銷',finance:'管理方・會計',owner:'號主・帳號持有人',merchant:'店主・實際經營者'})[x.kind];u.personId=p?.id;u.initial=u.name[0];
+  const before=JSON.stringify({name:u.name,kind:u.kind,personId:u.personId});u.name=x.name?.trim()||u.name;u.kind=x.kind;u.title=({admin:'系統管理員',ops:'管理方・營運',marketing:'管理方・行銷',sales:'管理方・業務',finance:'管理方・會計',owner:'號主・帳號持有人',merchant:'店主・實際經營者'})[x.kind];u.personId=p?.id;u.initial=u.name[0];
   audit(s,role,'修改登入權限','user',id,before,JSON.stringify({name:u.name,kind:u.kind,personId:u.personId}),reason);hydrateActors(s);return u;
 }
 export function resetLoginPassword(s,role,id,passwordHash,reason){
