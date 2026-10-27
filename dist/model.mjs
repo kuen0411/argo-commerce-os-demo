@@ -128,6 +128,7 @@ export function amount(fin){return fin.base+fin.adjustments.reduce((sum,x)=>sum+
 export function paid(fin){return fin.payments.reduce((sum,x)=>sum+Number(x.amount),0)}
 export function outstanding(fin){return Math.max(0,amount(fin)-paid(fin))}
 export const money=n=>'NT$ '+Number(n||0).toLocaleString('zh-TW');
+const FINANCE_DOCUMENT_TYPES=new Set(['平台帳單','對帳佐證','內部對帳表','結算報表','付款證明','費用單據','發票','收據']);
 const stamp=()=>new Date().toLocaleString('zh-TW',{hour12:false});
 const uid=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const ensure=(condition,msg)=>{if(!condition)throw new Error(msg)};
@@ -168,6 +169,9 @@ export function visibleSettlements(s,role){
   const ids=new Set(visibleStores(s,role).map(x=>x.id));
   return s.settlements.filter(x=>!x.deletedAt&&ids.has(x.storeId)&&!['marketing','sales'].includes(roleOf(role).kind)&&(roleOf(role).kind!=='merchant'||x.operatorId===roleOf(role).personId));
 }
+function financeDocument(s,d){
+  return d.financeOnly===true||FINANCE_DOCUMENT_TYPES.has(d.type)||d.uploadedBy==='finance'||s.users?.some(u=>u.id===d.uploadedBy&&u.kind==='finance')||s.expenseRequests?.some(r=>r.documentId===d.id)||s.cases.some(c=>c.requirements?.some(r=>r.key==='payment'&&r.docId===d.id))||d.refs.some(r=>r.kind==='settlement'||r.kind==='case'&&caseById(s,r.id)?.type==='Reconciliation');
+}
 export function visibleDocuments(s,role){
   const ids=new Set(visibleStores(s,role).map(x=>x.id));
   return s.documents.filter(d=>{
@@ -180,7 +184,7 @@ export function visibleDocuments(s,role){
     }
     if(roleIs(role,'ops','admin'))return true;
     if(roleIs(role,'marketing'))return d.type==='廣告素材'||d.type==='行銷報表';
-    if(roleIs(role,'sales')&&(d.refs.some(r=>r.kind==='settlement')||d.refs.some(r=>r.kind==='case'&&caseById(s,r.id)?.type==='Reconciliation')))return false;
+    if(roleIs(role,'sales')&&financeDocument(s,d))return false;
     const associated=d.refs.some(r=>r.kind==='store'&&ids.has(r.id)||r.kind==='case'&&canViewCase(s,role,r.id)||r.kind==='settlement'&&visibleSettlements(s,role).some(f=>f.id===r.id));
     return associated&&(roleOf(role).kind!=='merchant'||d.operational);
   });
@@ -223,11 +227,13 @@ export function updateTask(s,role,id,status,reason=''){
 export function addTaskEvidence(s,role,taskId,x){
   const t=s.tasks.find(y=>y.id===taskId&&!y.deletedAt);ensure(canManageTask(s,role,taskId),'無權替此任務上傳佐證。');
   ensure(x.name?.trim(),'請填佐證名稱。');
+  ensure(!roleIs(role,'sales')||!FINANCE_DOCUMENT_TYPES.has(x.type?.trim()),'業務不可上傳財務文件。');
   const d={id:uid('d'),name:x.name.trim(),type:x.type||'任務佐證',version:1,uploadedBy:role,uploadedAt:stamp(),source:x.source||'任務上傳',refs:[{kind:'store',id:t.storeId},{kind:'task',id:t.id}],operational:true};
   if(x.dataUrl)d.dataUrl=x.dataUrl;s.documents.unshift(d);t.evidenceDocIds??=[];t.evidenceDocIds.push(d.id);
   audit(s,role,'上傳任務佐證','document',d.id,'無',d.name,'任務 '+t.title);record(s,role,'任務佐證上傳',d.name,'task',t.id,t.storeId);return d;
 }
 export function requestExpense(s,role,taskId,amountValue,reason,documentId){
+  ensure(!roleIs(role,'sales'),'業務不處理任務費用。');
   const t=s.tasks.find(y=>y.id===taskId&&!y.deletedAt);ensure(canManageTask(s,role,taskId),'無權申請此任務費用。');
   const value=Number(amountValue);ensure(Number.isFinite(value)&&value>0&&reason?.trim(),'請填正數金額與費用用途。');
   ensure(documentId&&t.evidenceDocIds?.includes(documentId),'費用申請須關聯這項任務的單據。');
@@ -281,13 +287,15 @@ export function addDocument(s,role,x){
   if(x.caseId){const c=caseById(s,x.caseId);ensure(c&&c.storeId===x.storeId&&canViewCase(s,role,x.caseId),'案件與店舖不符或無權補件。');ensure(c.status!=='已結案','已結案案件的歷史佐證不可覆寫。')}
   if(x.settlementId)ensure(settlement(s,x.settlementId)?.storeId===x.storeId,'結算與店舖不符。');
   ensure(x.name?.trim()&&x.type?.trim(),'請填寫文件名稱與類型。');
+  const financeOnly=roleIs(role,'finance')||FINANCE_DOCUMENT_TYPES.has(x.type.trim())||!!x.settlementId||x.requirementKey==='payment'||caseById(s,x.caseId)?.type==='Reconciliation';
+  ensure(!roleIs(role,'sales')||!financeOnly,'業務不可上傳財務文件。');
   const existing=x.caseId&&x.requirementKey?s.documents.find(d=>d.refs.some(r=>r.kind==='case'&&r.id===x.caseId)&&d.type===x.type&&d.name===x.name):null;
   const refs=[{kind:'store',id:x.storeId}];
   if(x.caseId)refs.push({kind:'case',id:x.caseId});
   if(x.settlementId)refs.push({kind:'settlement',id:x.settlementId});
   let d;
-  if(existing){ensure(!closedEvidence(s,existing),'已結案案件的歷史佐證不可覆寫。');const before=existing.version;existing.version++;existing.uploadedAt=stamp();existing.uploadedBy=role;existing.source=x.source||'示範上傳';if(x.dataUrl)existing.dataUrl=x.dataUrl;d=existing;audit(s,role,'更新文件版本','document',d.id,'v'+before,'v'+d.version,'新版本上傳')}
-  else{d={id:uid('d'),name:x.name.trim(),type:x.type.trim(),version:1,uploadedBy:role,uploadedAt:stamp(),source:x.source||'展示上傳',refs,operational:true};if(x.dataUrl)d.dataUrl=x.dataUrl;s.documents.unshift(d);audit(s,role,'新增文件','document',d.id,'無',d.name,'文件上傳')}
+  if(existing){ensure(!closedEvidence(s,existing),'已結案案件的歷史佐證不可覆寫。');const before=existing.version;existing.version++;existing.uploadedAt=stamp();existing.uploadedBy=role;existing.financeOnly=existing.financeOnly===true||financeOnly;existing.source=x.source||'示範上傳';if(x.dataUrl)existing.dataUrl=x.dataUrl;d=existing;audit(s,role,'更新文件版本','document',d.id,'v'+before,'v'+d.version,'新版本上傳')}
+  else{d={id:uid('d'),name:x.name.trim(),type:x.type.trim(),version:1,uploadedBy:role,uploadedAt:stamp(),source:x.source||'展示上傳',refs,operational:true,financeOnly};if(x.dataUrl)d.dataUrl=x.dataUrl;s.documents.unshift(d);audit(s,role,'新增文件','document',d.id,'無',d.name,'文件上傳')}
   if(x.caseId&&x.requirementKey){const c=caseById(s,x.caseId),req=c?.requirements.find(r=>r.key===x.requirementKey);ensure(req,'找不到指定的補件項目。');req.docId=d.id;notify(s,c.assignee,c.code+' 收到新佐證','cases.html?id='+c.id)}
   record(s,role,'文件已補充',d.name+' v'+d.version,'document',d.id,x.storeId);return d;
 }
@@ -297,6 +305,7 @@ export function updateDocumentVersion(s,role,id,dataUrl,source){
   ensure(!closedEvidence(s,d),'已結案案件的歷史佐證不可覆寫。');
   const storeRef=d.refs.find(r=>r.kind==='store');
   const before=d.version;d.version++;d.uploadedBy=role;d.uploadedAt=stamp();d.source=source||'展示新版本';
+  if(roleIs(role,'finance'))d.financeOnly=true;
   if(dataUrl)d.dataUrl=dataUrl;
   audit(s,role,'更新文件版本','document',id,'v'+before,'v'+d.version,source||'新版文件');
   record(s,role,'文件版本更新',d.name+' v'+d.version,'document',id,storeRef?.id);return d;

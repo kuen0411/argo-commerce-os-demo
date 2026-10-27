@@ -103,3 +103,46 @@ test('legacy v1 saves keep owners assigned to sales',async()=>{
   assert.match(v1.app.innerHTML,/王大明/);
   assert.match(v1.app.innerHTML,/林怡君/);
 });
+
+test('sales screens retain sales figures without exposing finance history, task expenses or notifications',async()=>{
+  const fixture=structuredClone(SEED);
+  fixture.documents.push({id:'bill-extra',name:'十月平台帳單.pdf',type:'平台帳單',version:1,uploadedBy:'ops',refs:[{kind:'store',id:'s1'}],operational:true});
+  fixture.records.unshift(
+    {id:'finance-record',time:'2026-10-16',storeId:'s1',entityType:'settlement',entityId:'f1',title:'私有結算事項',detail:'NT$ 43,210',actor:'finance'},
+    {id:'bill-record',time:'2026-10-16',storeId:'s1',entityType:'document',entityId:'bill-extra',title:'私有文件事項',detail:'十月平台帳單.pdf',actor:'ops'}
+  );
+  fixture.notifications.push({id:'old-sales-recon',title:'RC-001 對帳提醒',recipient:'sales',route:'cases.html?id=cr1',read:false});
+  fixture.tasks.find(t=>t.id==='t1').assignee='sales';
+  fixture.expenseRequests.push({id:'ex-extra',taskId:'t1',storeId:'s1',amount:43210,reason:'私有費用用途',documentId:'d1',requestedBy:'merchant',status:'待會計審核'});
+  for(const [page,id] of [['index',''],['stores','s1'],['people','p1']]){
+    const ui=await loadUI('sales',page,id,fixture);
+    assert.doesNotMatch(ui.app.innerHTML,/私有結算事項|私有文件事項|NT\$ 43,210|十月平台帳單\.pdf/);
+    if(page==='stores')assert.match(ui.app.innerHTML,/NT\$ 1,420,000/);
+    if(page==='index')assert.match(ui.app.innerHTML,/近 30 日銷售/);
+  }
+  const task=await loadUI('sales','tasks','t1',fixture);
+  assert.doesNotMatch(task.app.innerHTML,/私有費用用途|NT\$ 43,210|費用申請/);
+  const docs=await loadUI('sales','docs','bill-extra',fixture);
+  assert.match(docs.app.innerHTML,/無權開啟/);
+  const unread=await loadUI('sales','accounts','a1',fixture);
+  assert.doesNotMatch(unread.app.innerHTML,/dot-count/);
+});
+
+test('sales owner page includes a newly created account before its first Store',async()=>{
+  const fixture=structuredClone(SEED);
+  fixture.accounts.push({id:'new-account',code:'NEW-WANG-010',platform:'Shopee',ownerId:'p1',status:'正常',storeIds:[]});
+  const owner=await loadUI('sales','people','p1',fixture);
+  assert.match(owner.app.innerHTML,/NEW-WANG-010/);
+});
+
+test('sales verification case does not show a payment document or offer to upload it',async()=>{
+  const fixture=structuredClone(SEED);
+  fixture.documents.push({id:'payment-extra',name:'私有付款憑證.pdf',type:'一般佐證',version:1,uploadedBy:'ops',refs:[{kind:'store',id:'s1'},{kind:'case',id:'cv1'}],operational:true});
+  fixture.cases.find(c=>c.id==='cv1').requirements.find(r=>r.key==='payment').docId='payment-extra';
+  const detail=await loadUI('sales','cases','cv1',fixture);
+  assert.doesNotMatch(detail.app.innerHTML,/私有付款憑證\.pdf/);
+  assert.match(detail.app.innerHTML,/僅授權身分可查看/);
+  assert.doesNotMatch(detail.app.innerHTML,/data-req="payment"/);
+  const doc=await loadUI('sales','docs','payment-extra',fixture);
+  assert.match(doc.app.innerHTML,/無權開啟/);
+});

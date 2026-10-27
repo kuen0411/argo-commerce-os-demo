@@ -177,3 +177,23 @@ test('sales manages only assigned owners and only operations can reassign them',
   assert.throws(()=>m.createPlatformAccount(s,'sales',{ownerId:'p2',platform:'Shopee',code:'SHP-LIN-009',status:'正常',note:''}),/不能管理這位號主/);
   assert.equal(m.visibleSettlements(s,'sales').length,0);
 });
+
+test('sales keeps store sales access while finance documents and expense actions stay outside its scope',()=>{
+  const s=fresh();
+  assert.equal(m.visibleStores(s,'sales').find(st=>st.id==='s1')?.sales,1420000);
+  const bill=m.addDocument(s,'ops',{storeId:'s1',name:'十月平台帳單.pdf',type:'平台帳單'});
+  const receipt=m.addDocument(s,'finance',{storeId:'s1',name:'付款紀錄.pdf',type:'營運文件'});
+  const payment=m.addDocument(s,'ops',{storeId:'s1',caseId:'cv1',requirementKey:'payment',name:'付款證明.pdf',type:'一般佐證'});
+  const logistics=m.addDocument(s,'ops',{storeId:'s1',caseId:'cv1',requirementKey:'logistics',name:'物流佐證.pdf',type:'物流佐證'});
+  for(const d of [bill,receipt,payment]){
+    assert.ok(!m.visibleDocuments(s,'sales').some(x=>x.id===d.id));
+    assert.throws(()=>m.updateDocumentVersion(s,'sales',d.id,null,'改版'),/無權/);
+  }
+  assert.ok(m.visibleDocuments(s,'sales').some(x=>x.id===logistics.id));
+  assert.throws(()=>m.addDocument(s,'sales',{storeId:'s1',name:'帳單',type:'平台帳單'}),/不可上傳財務文件/);
+  assert.throws(()=>m.addDocument(s,'sales',{storeId:'s1',caseId:'cv1',requirementKey:'payment',name:'付款',type:'一般佐證'}),/不可上傳財務文件/);
+  const task=m.createTask(s,'ops',{storeId:'s1',sourceType:'case',sourceId:'cv1',title:'物流追蹤',criteria:'補物流資料',assignee:'sales'});
+  assert.throws(()=>m.addTaskEvidence(s,'sales',task.id,{name:'收據',type:'收據'}),/不可上傳財務文件/);
+  const evidence=m.addTaskEvidence(s,'sales',task.id,{name:'物流資料',type:'物流佐證'});
+  assert.throws(()=>m.requestExpense(s,'sales',task.id,1000,'代墊運費',evidence.id),/業務不處理任務費用/);
+});
