@@ -151,6 +151,20 @@ test('assignment scope and closed case documents preserve their history',()=>{
   assert.equal(s.settings.companyName,'ARGO 管理公司');
 });
 
+test('reconciliation tasks reject sales without breaking other task flows',()=>{
+  const s=fresh();
+  assert.throws(()=>m.createTask(s,'ops',{storeId:'s1',sourceType:'case',sourceId:'cr1',title:'核對帳單',criteria:'確認差額',assignee:'sales'}),/對帳案件任務不可指派業務/);
+  assert.throws(()=>m.createTask(s,'sales',{storeId:'s1',sourceType:'case',sourceId:'cr1',title:'核對帳單',criteria:'確認差額',assignee:'finance'}),/無權查看/);
+  const financeTask=m.createTask(s,'ops',{storeId:'s1',sourceType:'case',sourceId:'cr1',title:'核對帳單',criteria:'確認差額',assignee:'finance'});
+  assert.ok(m.visibleTasks(s,'finance').some(x=>x.id===financeTask.id));
+  const salesTask=m.createTask(s,'ops',{storeId:'s1',sourceType:'case',sourceId:'cv1',title:'追蹤補件',criteria:'確認物流佐證',assignee:'sales'});
+  assert.ok(m.visibleTasks(s,'sales').some(x=>x.id===salesTask.id));
+  const oldTask={...financeTask,id:'legacy-reconciliation-sales',assignee:'sales'};
+  s.tasks.push(oldTask);
+  assert.ok(!m.visibleTasks(s,'sales').some(x=>x.id===oldTask.id));
+  assert.ok(m.visibleTasks(s,'ops').some(x=>x.id===oldTask.id));
+});
+
 test('sales manages only assigned owners and only operations can reassign them',()=>{
   const s=fresh();
   assert.equal(m.visiblePeople(s,'sales').filter(x=>x.kind==='owner').length,3);

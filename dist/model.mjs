@@ -161,7 +161,7 @@ export const canViewCase=(s,role,id)=>visibleCases(s,role).some(x=>x.id===id);
 export function visibleTasks(s,role){
   const ids=new Set(visibleStores(s,role).map(x=>x.id));
   if(roleIs(role,'admin','ops'))return s.tasks.filter(x=>!x.deletedAt);
-  return s.tasks.filter(x=>!x.deletedAt&&ids.has(x.storeId)&&(x.assignee===role||x.createdBy===role||roleIs(role,'finance')&&s.expenseRequests?.some(r=>r.taskId===x.id)));
+  return s.tasks.filter(x=>!x.deletedAt&&ids.has(x.storeId)&&!(roleIs(role,'sales')&&x.sourceType==='case'&&caseById(s,x.sourceId)?.type==='Reconciliation')&&(x.assignee===role||x.createdBy===role||roleIs(role,'finance')&&s.expenseRequests?.some(r=>r.taskId===x.id)));
 }
 export function canManageTask(s,role,id){const t=s.tasks.find(x=>x.id===id&&!x.deletedAt);return !!t&&visibleTasks(s,role).some(x=>x.id===id)&&(roleIs(role,'admin','ops')||t.assignee===role||t.createdBy===role)}
 export function visibleSettlements(s,role){
@@ -207,6 +207,10 @@ export function createTask(s,role,x){
   ensure(x.title?.trim()&&x.criteria?.trim(),'請填寫任務名稱與完成條件。');
   ensure(ACTORS[x.assignee],'請選擇負責人。');
   ensure(canViewStore(s,x.assignee,x.storeId),'負責人無法查看這間店舖，請選擇有權限的帳號。');
+  if(x.sourceType==='case'){
+    ensure(caseById(s,x.sourceId)?.storeId===x.storeId&&canViewCase(s,role,x.sourceId),'來源案件與店舖不符或目前身分無權查看。');
+    ensure(!(caseById(s,x.sourceId)?.type==='Reconciliation'&&roleIs(x.assignee,'sales')),'對帳案件任務不可指派業務。');
+  }
   const t={id:uid('t'),title:x.title.trim(),storeId:x.storeId,sourceType:x.sourceType||'store',sourceId:x.sourceId||x.storeId,assignee:x.assignee,createdBy:role,due:x.due||'2026-10-22',status:'待處理',criteria:x.criteria.trim(),deletedAt:null};
   s.tasks.unshift(t);audit(s,role,'建立任務','task',t.id,'無',t.title,'責任範圍內新增');record(s,role,'建立任務',t.title,'task',t.id,t.storeId);notify(s,t.assignee,'新任務：'+t.title,'tasks.html?id='+t.id);return t;
 }
