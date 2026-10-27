@@ -420,6 +420,9 @@ export function addRecord(s,role,storeId,title,detail,choice){
 }
 export function addMovement(s,role,x){
   ensure(roleIs(role,'ops','admin','merchant'),'只有管理方或店主可新增物流紀錄。');scoped(s,role,x.storeId);
+  const st=store(s,x.storeId);
+  ensure(st.status==='營運中','已關閉店舖不可新增物流紀錄。');
+  if(roleIs(role,'merchant'))ensure(currentOperator(s,st)?.id===roleOf(role).personId,'只有目前負責的店主可新增物流紀錄。');
   const qty=Number(x.qty);ensure(qty>0&&x.route?.trim(),'請填入數量與物流路線。');
   const m={id:uid('mv'),code:'MV-'+String(s.movements.length+1).padStart(4,'0'),type:x.type||'入庫',storeId:x.storeId,date:stamp().slice(0,10),qty,route:x.route.trim(),status:'待處理',source:x.source||'展示輸入'};
   s.movements.unshift(m);audit(s,role,'新增物流紀錄','movement',m.id,'無',m.code,m.source);record(s,role,'物流紀錄建立',m.code+'・'+m.route,'movement',m.id,m.storeId);return m;

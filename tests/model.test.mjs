@@ -203,6 +203,13 @@ test('merchants key in movements for their stores and sales develops only owners
   m.addMovement(s,'merchant',{storeId:'s1',type:'出貨',qty:10,route:'台北主倉 → 平台',source:'OUT-KEYIN'});
   assert.ok(s.movements.some(x=>x.source==='OUT-KEYIN'));
   assert.throws(()=>m.addMovement(s,'merchant',{storeId:'s3',type:'出貨',qty:1,route:'x'}),/責任範圍/);
+  const handedOver=s.stores.find(x=>x.id==='s1');
+  handedOver.assignments.find(x=>!x.to).to='2026-10-27';
+  handedOver.assignments.push({merchantId:'mC',from:'2026-10-28',to:null,confirmedBy:'ops'});
+  assert.ok(m.canViewStore(s,'merchant','s1'));
+  assert.throws(()=>m.addMovement(s,'merchant',{storeId:'s1',type:'出貨',qty:1,route:'x'}),/目前負責/);
+  handedOver.status='已關閉';
+  assert.throws(()=>m.addMovement(s,'ops',{storeId:'s1',type:'出貨',qty:1,route:'x'}),/已關閉/);
   assert.throws(()=>m.addMovement(s,'sales',{storeId:'s1',type:'入庫',qty:1,route:'x'}),/只有管理方或店主/);
   const owner=m.createPerson(s,'sales',{kind:'owner',name:'新開發號主',phone:'',city:'',email:'',notes:''});
   assert.equal(owner.salesId,'sales');

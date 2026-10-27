@@ -122,6 +122,10 @@ test('sales screens retain sales figures without exposing finance history, task 
   }
   const task=await loadUI('sales','tasks','t1',fixture);
   assert.doesNotMatch(task.app.innerHTML,/私有費用用途|NT\$ 43,210|費用申請/);
+  assert.match(task.app.innerHTML,/更新任務/);
+  assert.doesNotMatch(task.app.innerHTML,/更新／上傳單據/);
+  const operationalDoc=await loadUI('sales','docs','d1',fixture);
+  assert.doesNotMatch(operationalDoc.app.innerHTML,/更新版本/);
   const docs=await loadUI('sales','docs','bill-extra',fixture);
   assert.match(docs.app.innerHTML,/無權開啟/);
   const unread=await loadUI('sales','accounts','a1',fixture);
