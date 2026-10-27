@@ -227,13 +227,13 @@ export function updateTask(s,role,id,status,reason=''){
 export function addTaskEvidence(s,role,taskId,x){
   const t=s.tasks.find(y=>y.id===taskId&&!y.deletedAt);ensure(canManageTask(s,role,taskId),'無權替此任務上傳佐證。');
   ensure(x.name?.trim(),'請填佐證名稱。');
-  ensure(!roleIs(role,'sales')||!FINANCE_DOCUMENT_TYPES.has(x.type?.trim()),'業務不可上傳財務文件。');
+  ensure(!roleIs(role,'sales'),'業務不上傳店舖文件或任務佐證。');
   const d={id:uid('d'),name:x.name.trim(),type:x.type||'任務佐證',version:1,uploadedBy:role,uploadedAt:stamp(),source:x.source||'任務上傳',refs:[{kind:'store',id:t.storeId},{kind:'task',id:t.id}],operational:true};
   if(x.dataUrl)d.dataUrl=x.dataUrl;s.documents.unshift(d);t.evidenceDocIds??=[];t.evidenceDocIds.push(d.id);
   audit(s,role,'上傳任務佐證','document',d.id,'無',d.name,'任務 '+t.title);record(s,role,'任務佐證上傳',d.name,'task',t.id,t.storeId);return d;
 }
 export function requestExpense(s,role,taskId,amountValue,reason,documentId){
-  ensure(!roleIs(role,'sales'),'業務不處理任務費用。');
+  ensure(roleIs(role,'ops','admin'),'任務費用由營運申請，號主與店主只提交單據。');
   const t=s.tasks.find(y=>y.id===taskId&&!y.deletedAt);ensure(canManageTask(s,role,taskId),'無權申請此任務費用。');
   const value=Number(amountValue);ensure(Number.isFinite(value)&&value>0&&reason?.trim(),'請填正數金額與費用用途。');
   ensure(documentId&&t.evidenceDocIds?.includes(documentId),'費用申請須關聯這項任務的單據。');
@@ -282,6 +282,7 @@ export function createCase(s,role,x){
 }
 function closedEvidence(s,d){return s.cases.some(c=>c.status==='已結案'&&(d.refs.some(r=>r.kind==='case'&&r.id===c.id)||c.requirements.some(r=>r.docId===d.id)))}
 export function addDocument(s,role,x){
+  ensure(!roleIs(role,'sales'),'業務不上傳店舖文件。');
   scoped(s,role,x.storeId);
   if(roleIs(role,'marketing'))ensure(['廣告素材','行銷報表'].includes(x.type),'行銷角色僅能上傳行銷相關文件。');
   if(x.caseId){const c=caseById(s,x.caseId);ensure(c&&c.storeId===x.storeId&&canViewCase(s,role,x.caseId),'案件與店舖不符或無權補件。');ensure(c.status!=='已結案','已結案案件的歷史佐證不可覆寫。')}
@@ -300,6 +301,7 @@ export function addDocument(s,role,x){
   record(s,role,'文件已補充',d.name+' v'+d.version,'document',d.id,x.storeId);return d;
 }
 export function updateDocumentVersion(s,role,id,dataUrl,source){
+  ensure(!roleIs(role,'sales'),'業務不更新店舖文件版本。');
   const d=s.documents.find(x=>x.id===id);ensure(d&&visibleDocuments(s,role).some(x=>x.id===id),'無權更新此文件。');
   if(d.privacy==='owner_private')ensure(roleIs(role,'admin','ops')||roleOf(role).kind==='owner'&&roleOf(role).personId===d.refs.find(r=>r.kind==='person')?.id,'無權更新號主個人文件。');
   ensure(!closedEvidence(s,d),'已結案案件的歷史佐證不可覆寫。');
@@ -417,7 +419,7 @@ export function addRecord(s,role,storeId,title,detail,choice){
   return {record:r};
 }
 export function addMovement(s,role,x){
-  ensure(roleIs(role,'ops','admin'),'只有管理方可新增物流紀錄。');scoped(s,role,x.storeId);
+  ensure(roleIs(role,'ops','admin','merchant'),'只有管理方或店主可新增物流紀錄。');scoped(s,role,x.storeId);
   const qty=Number(x.qty);ensure(qty>0&&x.route?.trim(),'請填入數量與物流路線。');
   const m={id:uid('mv'),code:'MV-'+String(s.movements.length+1).padStart(4,'0'),type:x.type||'入庫',storeId:x.storeId,date:stamp().slice(0,10),qty,route:x.route.trim(),status:'待處理',source:x.source||'展示輸入'};
   s.movements.unshift(m);audit(s,role,'新增物流紀錄','movement',m.id,'無',m.code,m.source);record(s,role,'物流紀錄建立',m.code+'・'+m.route,'movement',m.id,m.storeId);return m;
@@ -435,8 +437,9 @@ function manager(role){ensure(roleIs(role,'ops','admin'),'僅管理方可設定�
 function ownerScope(s,role,ownerId){ensure(roleIs(role,'ops','admin')||roleIs(role,'sales')&&person(s,ownerId)?.salesId===roleOf(role).id,'此身分不能管理這位號主。')}
 function uniqueCode(list,code,except){ensure(!list.some(x=>x.code?.toLowerCase()===code.toLowerCase()&&x.id!==except),'此編號已存在，請使用不同編號。')}
 export function createPerson(s,role,x){
-  manager(role);ensure(['owner','merchant'].includes(x.kind),'請選擇合作類型。');ensure(x.name?.trim(),'請輸入合作對象姓名。');
+  ensure(roleIs(role,'ops','admin')||roleIs(role,'sales')&&x.kind==='owner','此身分只能新增號主。');ensure(['owner','merchant'].includes(x.kind),'請選擇合作類型。');ensure(x.name?.trim(),'請輸入合作對象姓名。');
   const p={id:uid('p'),kind:x.kind,name:x.name.trim(),phone:x.phone?.trim()||'—',city:x.city?.trim()||'—',email:x.email?.trim()||'',status:'合作中',notes:x.notes?.trim()||'',sensitive:x.kind==='owner'?{family:'未提供',occupation:'未提供',income:'未提供',health:'未提供'}:undefined};
+  if(roleIs(role,'sales'))p.salesId=roleOf(role).id;
   s.people.unshift(p);audit(s,role,'新增合作對象','person',p.id,'無',p.name,x.kind);record(s,role,'新增合作對象',p.name+'・'+x.kind,'person',p.id);return p;
 }
 export function createPlatformAccount(s,role,x){

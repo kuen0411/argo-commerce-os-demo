@@ -55,9 +55,9 @@ test('owner CRM submission does not overwrite before owner confirmation',()=>{
 
 test('task evidence and expense application require a document and finance decision',()=>{
   const s=fresh();
-  assert.throws(()=>m.requestExpense(s,'merchant','t1',1500,'運費',null),/單據/);
+  assert.throws(()=>m.requestExpense(s,'ops','t1',1500,'運費',null),/單據/);
   const d=m.addTaskEvidence(s,'merchant','t1',{name:'運費收據',dataUrl:'data:text/plain;base64,VEVTVA=='});
-  const r=m.requestExpense(s,'merchant','t1',1500,'驗證運費',d.id);
+  const r=m.requestExpense(s,'ops','t1',1500,'驗證運費',d.id);
   assert.equal(r.status,'待會計審核');
   assert.ok(m.visibleTasks(s,'finance').some(t=>t.id==='t1'));
   assert.equal(m.canManageTask(s,'finance','t1'),false);
@@ -187,13 +187,25 @@ test('sales keeps store sales access while finance documents and expense actions
   const logistics=m.addDocument(s,'ops',{storeId:'s1',caseId:'cv1',requirementKey:'logistics',name:'物流佐證.pdf',type:'物流佐證'});
   for(const d of [bill,receipt,payment]){
     assert.ok(!m.visibleDocuments(s,'sales').some(x=>x.id===d.id));
-    assert.throws(()=>m.updateDocumentVersion(s,'sales',d.id,null,'改版'),/無權/);
+    assert.throws(()=>m.updateDocumentVersion(s,'sales',d.id,null,'改版'),/業務不更新/);
   }
   assert.ok(m.visibleDocuments(s,'sales').some(x=>x.id===logistics.id));
-  assert.throws(()=>m.addDocument(s,'sales',{storeId:'s1',name:'帳單',type:'平台帳單'}),/不可上傳財務文件/);
-  assert.throws(()=>m.addDocument(s,'sales',{storeId:'s1',caseId:'cv1',requirementKey:'payment',name:'付款',type:'一般佐證'}),/不可上傳財務文件/);
+  assert.throws(()=>m.addDocument(s,'sales',{storeId:'s1',name:'帳單',type:'平台帳單'}),/業務不上傳店舖文件/);
+  assert.throws(()=>m.addDocument(s,'sales',{storeId:'s1',caseId:'cv1',requirementKey:'payment',name:'付款',type:'一般佐證'}),/業務不上傳店舖文件/);
   const task=m.createTask(s,'ops',{storeId:'s1',sourceType:'case',sourceId:'cv1',title:'物流追蹤',criteria:'補物流資料',assignee:'sales'});
-  assert.throws(()=>m.addTaskEvidence(s,'sales',task.id,{name:'收據',type:'收據'}),/不可上傳財務文件/);
-  const evidence=m.addTaskEvidence(s,'sales',task.id,{name:'物流資料',type:'物流佐證'});
-  assert.throws(()=>m.requestExpense(s,'sales',task.id,1000,'代墊運費',evidence.id),/業務不處理任務費用/);
+  assert.throws(()=>m.addTaskEvidence(s,'sales',task.id,{name:'收據',type:'收據'}),/業務不上傳店舖文件或任務佐證/);
+  assert.throws(()=>m.addTaskEvidence(s,'sales',task.id,{name:'物流資料',type:'物流佐證'}),/業務不上傳店舖文件或任務佐證/);
+  assert.throws(()=>m.requestExpense(s,'sales',task.id,1000,'代墊運費','none'),/任務費用由營運申請/);
+});
+
+test('merchants key in movements for their stores and sales develops only owners',()=>{
+  const s=fresh();
+  m.addMovement(s,'merchant',{storeId:'s1',type:'出貨',qty:10,route:'台北主倉 → 平台',source:'OUT-KEYIN'});
+  assert.ok(s.movements.some(x=>x.source==='OUT-KEYIN'));
+  assert.throws(()=>m.addMovement(s,'merchant',{storeId:'s3',type:'出貨',qty:1,route:'x'}),/責任範圍/);
+  assert.throws(()=>m.addMovement(s,'sales',{storeId:'s1',type:'入庫',qty:1,route:'x'}),/只有管理方或店主/);
+  const owner=m.createPerson(s,'sales',{kind:'owner',name:'新開發號主',phone:'',city:'',email:'',notes:''});
+  assert.equal(owner.salesId,'sales');
+  assert.throws(()=>m.createPerson(s,'sales',{kind:'merchant',name:'新店主'}),/只能新增號主/);
+  assert.throws(()=>m.createPerson(s,'merchant',{kind:'owner',name:'x'}),/只能新增號主/);
 });

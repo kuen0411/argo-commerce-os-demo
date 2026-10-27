@@ -146,3 +146,19 @@ test('sales verification case does not show a payment document or offer to uploa
   const doc=await loadUI('sales','docs','payment-extra',fixture);
   assert.match(doc.app.innerHTML,/無權開啟/);
 });
+
+test('sales develops owners and records evidence gaps without uploading store documents',async()=>{
+  const docs=await loadUI('sales','docs');
+  assert.doesNotMatch(docs.app.innerHTML,/data-kind="document"/);
+  const ops=await loadUI('ops','docs');
+  assert.match(ops.app.innerHTML,/data-kind="document"/);
+  const people=await loadUI('sales','people');
+  assert.match(people.app.innerHTML,/data-kind="person-create"/);
+  const gaps=await loadUI('sales','cases','cv1');
+  assert.match(gaps.app.innerHTML,/物流佐證/);
+  assert.doesNotMatch(gaps.app.innerHTML,/data-kind="evidence"/);
+  const merchantOps=await loadUI('merchant','operations');
+  assert.match(merchantOps.app.innerHTML,/data-kind="movement"/);
+  const salesOps=await loadUI('sales','operations');
+  assert.doesNotMatch(salesOps.app.innerHTML,/data-kind="movement"/);
+});
