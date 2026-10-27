@@ -1,0 +1,16 @@
+name: Review demo tests
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify demo behavior
+        run: node --test tests/model.test.mjs tests/ui.test.mjs
