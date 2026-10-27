@@ -5,8 +5,9 @@ import {SEED,ROLE_KEY,STORAGE_KEY,TOUR_KEY} from '../dist/model.mjs';
 const pages=['index','people','accounts','stores','cases','tasks','docs','finance','operations','history','settings','admin'];
 const roles=['admin','ops','marketing','finance','sales','owner1','merchant'];
 
-function loadUI(role,page,id='',fixture=SEED,tourSeen=true){
+function loadUI(role,page,id='',fixture=SEED,tourSeen=true,legacyV1=null){
   const values=new Map([[ROLE_KEY,role],[STORAGE_KEY,JSON.stringify(fixture)]]);
+  if(legacyV1)values.set('argo-commerce-os-demo-v1',JSON.stringify(legacyV1));
   if(tourSeen)values.set(TOUR_KEY+':'+role,'seen');
   globalThis.localStorage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,String(v))};
   globalThis.location={pathname:'/'+page+'.html',search:id?'?id='+id:'',href:''};
@@ -71,4 +72,34 @@ test('first visit tour uses each account and its permitted modules',async()=>{
   assert.match(merchant['modal-root'].innerHTML,/首次使用導覽/);
   assert.match(merchant['modal-root'].innerHTML,/任務查看|執行、佐證與費用/);
   assert.doesNotMatch(merchant['modal-root'].innerHTML,/登入權限與密碼管理/);
+});
+
+test('sales cannot reach reconciliation cases, settlement amounts or finance documents',async()=>{
+  const dashboard=await loadUI('sales','index');
+  assert.doesNotMatch(dashboard.app.innerHTML,/68,000/);
+  const reconciliation=await loadUI('sales','cases','cr1');
+  assert.match(reconciliation.app.innerHTML,/無權開啟/);
+  const finance=await loadUI('sales','docs','d4');
+  assert.match(finance.app.innerHTML,/無權開啟/);
+  const store=await loadUI('sales','stores','s1');
+  assert.doesNotMatch(store.app.innerHTML,/RC-001/);
+});
+
+test('store creation and personal document upload are limited to their owners',async()=>{
+  const salesAccount=await loadUI('sales','accounts','a1');
+  assert.match(salesAccount.app.innerHTML,/編輯帳號/);
+  assert.doesNotMatch(salesAccount.app.innerHTML,/在此帳號新增店舖/);
+  const opsAccount=await loadUI('ops','accounts','a1');
+  assert.match(opsAccount.app.innerHTML,/在此帳號新增店舖/);
+  const salesOwner=await loadUI('sales','people','p1');
+  assert.doesNotMatch(salesOwner.app.innerHTML,/上傳個人文件/);
+  const ownerSelf=await loadUI('owner1','people','p1');
+  assert.match(ownerSelf.app.innerHTML,/上傳個人文件/);
+});
+
+test('legacy v1 saves keep owners assigned to sales',async()=>{
+  const legacy={...structuredClone(SEED),version:1,people:SEED.people.map(({salesId,...p})=>p)};
+  const v1=await loadUI('sales','people','',null,true,legacy);
+  assert.match(v1.app.innerHTML,/王大明/);
+  assert.match(v1.app.innerHTML,/林怡君/);
 });

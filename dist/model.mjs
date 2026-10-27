@@ -111,7 +111,8 @@ export const SEED={
 
 export function clone(x){return JSON.parse(JSON.stringify(x))}
 function hydrateActors(s){for(const key of Object.keys(ACTORS))delete ACTORS[key];for(const u of s.users||[])if(u.status==='啟用'&&!u.deletedAt)ACTORS[u.id]={id:u.id,name:u.name,title:u.title,initial:u.initial,kind:u.kind,personId:u.personId}}
-export function loadState(){try{const parsed=JSON.parse(localStorage.getItem(STORAGE_KEY));if(parsed?.version===2){parsed.settings=parsed.settings||clone(SEED.settings);parsed.settings.deletionVerifier??=null;parsed.expenseRequests??=[];for(const p of parsed.people)if(p.kind==='owner'&&p.salesId===undefined)p.salesId=SEED.people.find(x=>x.id===p.id)?.salesId??null;parsed.users??=clone(SEED.users);for(const u of SEED.users)if(!parsed.users.some(x=>x.id===u.id))parsed.users.push(clone(u));for(const u of parsed.users)u.passwordHash??=null;hydrateActors(parsed);return parsed}const old=JSON.parse(localStorage.getItem('argo-commerce-os-demo-v1'));if(old?.version===1){const next=clone(old);next.version=2;for(const key of ['people','entities','accounts','stores'])for(const x of SEED[key])if(!next[key].some(y=>y.id===x.id))next[key].push(clone(x));next.users=clone(SEED.users);next.settings=clone(SEED.settings);next.expenseRequests=[];hydrateActors(next);return next}}catch{}const result=clone(SEED);hydrateActors(result);return result}
+function assignSalesDefaults(state){for(const p of state.people)if(p.kind==='owner'&&p.salesId===undefined)p.salesId=SEED.people.find(x=>x.id===p.id)?.salesId??null}
+export function loadState(){try{const parsed=JSON.parse(localStorage.getItem(STORAGE_KEY));if(parsed?.version===2){parsed.settings=parsed.settings||clone(SEED.settings);parsed.settings.deletionVerifier??=null;parsed.expenseRequests??=[];assignSalesDefaults(parsed);parsed.users??=clone(SEED.users);for(const u of SEED.users)if(!parsed.users.some(x=>x.id===u.id))parsed.users.push(clone(u));for(const u of parsed.users)u.passwordHash??=null;hydrateActors(parsed);return parsed}const old=JSON.parse(localStorage.getItem('argo-commerce-os-demo-v1'));if(old?.version===1){const next=clone(old);next.version=2;for(const key of ['people','entities','accounts','stores'])for(const x of SEED[key])if(!next[key].some(y=>y.id===x.id))next[key].push(clone(x));next.users=clone(SEED.users);next.settings=clone(SEED.settings);next.expenseRequests=[];assignSalesDefaults(next);hydrateActors(next);return next}}catch{}const result=clone(SEED);hydrateActors(result);return result}
 export function saveState(state){localStorage.setItem(STORAGE_KEY,JSON.stringify(state));hydrateActors(state)}
 export const person=(s,id)=>s.people.find(x=>x.id===id);
 export const account=(s,id)=>s.accounts.find(x=>x.id===id);
@@ -146,6 +147,7 @@ export function visibleCases(s,role){
   return s.cases.filter(x=>{
     if(x.deletedAt)return false;
     if(roleOf(role).kind==='marketing')return false;
+    if(roleOf(role).kind==='sales'&&x.type==='Reconciliation')return false;
     if(!ids.has(x.storeId))return false;
     if(roleOf(role).kind==='merchant'){
       if(x.type==='Penalty')return x.responsibleMerchantId===roleOf(role).personId;
@@ -178,6 +180,7 @@ export function visibleDocuments(s,role){
     }
     if(roleIs(role,'ops','admin'))return true;
     if(roleIs(role,'marketing'))return d.type==='廣告素材'||d.type==='行銷報表';
+    if(roleIs(role,'sales')&&(d.refs.some(r=>r.kind==='settlement')||d.refs.some(r=>r.kind==='case'&&caseById(s,r.id)?.type==='Reconciliation')))return false;
     const associated=d.refs.some(r=>r.kind==='store'&&ids.has(r.id)||r.kind==='case'&&canViewCase(s,role,r.id)||r.kind==='settlement'&&visibleSettlements(s,role).some(f=>f.id===r.id));
     return associated&&(roleOf(role).kind!=='merchant'||d.operational);
   });
@@ -464,7 +467,7 @@ export function assignSales(s,role,ownerId,salesId,reason){
   audit(s,role,'指派負責業務','person',ownerId,before,owner.salesId||'未指派',reason);record(s,role,'負責業務變更',owner.name+'・'+reason,'person',ownerId);return owner;
 }
 export function addPersonDocument(s,role,ownerId,x){
-  const p=person(s,ownerId);ensure(p?.kind==='owner'&&(roleIs(role,'ops','admin')||roleOf(role).kind==='owner'&&roleOf(role).personId===ownerId||roleIs(role,'sales')&&p.salesId===roleOf(role).id),'無權上傳此號主文件。');
+  const p=person(s,ownerId);ensure(p?.kind==='owner'&&(roleIs(role,'ops','admin')||roleOf(role).kind==='owner'&&roleOf(role).personId===ownerId),'無權上傳此號主文件。');
   ensure(['身分證','銀行存摺','授權書','其他個人文件'].includes(x.type),'請選擇個人文件類型。');ensure(x.name?.trim(),'請填文件名稱。');
   const d={id:uid('d'),name:x.name.trim(),type:x.type,version:1,uploadedBy:role,uploadedAt:stamp(),source:x.source||'展示上傳',refs:[{kind:'person',id:ownerId}],privacy:'owner_private',operational:false};
   if(x.dataUrl)d.dataUrl=x.dataUrl;s.documents.unshift(d);audit(s,role,'上傳號主文件','document',d.id,'無',d.name,'僅號主與授權管理方可見');record(s,role,'號主文件上傳',d.type+'・'+d.name,'document',d.id);return d;
